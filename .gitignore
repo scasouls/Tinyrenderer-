@@ -1,0 +1,64 @@
+# ========================
+# Build output
+# ========================
+build/
+Build/
+out/
+bin/
+obj/
+lib/
+.vs/
+.vs
+
+# 忽略编译生成的 .obj 文件，但保留模型 .obj（通过路径/文件夹区别）
+*.obj
+!*/model.obj
+!*.mtl
+!*.obj        # ✅ 保留所有 .obj 文件（模型）
+
+# ========================
+# CMake generated files
+# ========================
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Ninja (optional)
+.ninja_deps
+.ninja_log
+rules.ninja
+build.ninja
+
+# ========================
+# Visual Studio
+# ========================
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.ipch
+*.pdb
+*.vcxproj*
+*.tlog
+*.log
+*.idb
+*.ipdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+
+# ========================
+# VS Code / system
+# ========================
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
