@@ -11,10 +11,10 @@ Model::Model(const char* filename) {
 	}
 	std::string line;
 	while (std::getline(in, line)) {
-		if (line.empty()) continue;
+		if (line.empty()) continue;//空行跳过
 		std::string type;
 		std::stringstream iss(line);
-		iss >> type;
+		iss >> type;//检测首位字符判断读取的数据
 		if (type == "v") {
 			Vec3f vert_val;
 			for (int i = 0; i < 3; ++i) iss >> vert_val.raw[i];
@@ -26,7 +26,7 @@ Model::Model(const char* filename) {
 			int index, uv, nor;
 			while (iss >> index >> slash >> uv >> slash >> nor) {
 				index--;
-				face_val.push_back(index);
+				face_val.push_back(index);//索引从1开始，规范为数组的从零开始
 			}
 			faces.push_back(face_val);
 		}

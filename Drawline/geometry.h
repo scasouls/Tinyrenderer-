@@ -3,6 +3,8 @@
 #include <cmath>
 
 template<class T>
+
+//处理二维数据
 struct Vec2 {
     union {
         struct { T u, v; };
@@ -18,6 +20,7 @@ struct Vec2 {
     inline Vec2<T> operator*(float a) const { return Vec2<T>(u * a, v * a); }
 };
 
+//处理三维数据
 template<class T>
 struct Vec3 {
     union {
