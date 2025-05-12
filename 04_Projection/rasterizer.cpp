@@ -7,10 +7,18 @@ Eigen::Matrix4f rasterizer::model_Matrix(float angle) {
     Eigen::Matrix4f scale;
     scale << 1, 0, 0, 0,
         0, 1, 0, 0,
-        0, 0, 1, 0,
+        0, 0,1, 0,
         0, 0, 0, 1;
 
-    return translate  * rotation * scale;
+    //按y轴进行旋转
+    float a = 60.0 * MY_PI / 360.0f;
+    Eigen::Matrix4f rota;
+    rota << cos(a), 0, sin(a), 0,
+        0, 1, 0, 0,
+        -sin(a), 0, cos(a), 0,
+        0, 0, 0, 1;
+
+    return translate  * rota * scale;
 }
 
 Eigen::Matrix4f rasterizer::view_Matrix(Eigen::Vector3f eye_pos) {
@@ -25,11 +33,11 @@ Eigen::Matrix4f rasterizer::view_Matrix(Eigen::Vector3f eye_pos) {
     Eigen::Matrix4f rotate;
     rotate << 1, 0, 0, 0,
         0, 1, 0, 0,
-        0, 0, -1, 0,
+        0, 0, 1, 0,
         0, 0, 0, 1;
 
     // 先旋转再平移
-    view = rotate * translate;
+    view = translate * rotate;
 
     return view;
 }
@@ -38,44 +46,42 @@ Eigen::Matrix4f rasterizer::projection_Matrix(float eye_fov, float aspect, float
     float angle = eye_fov * MY_PI / 180.0f;
     float t = tan(angle / 2.0f) * zNear;
     float r = t * aspect;
-    float l = -r;
-    float b = -t;
 
-    // 透视投影矩阵的变换
-    Eigen::Matrix4f persp2ortho;
-    persp2ortho <<
-        zNear, 0, 0, 0,
-        0, zNear, 0, 0,
-        0, 0, zNear + zFar, -zNear * zFar,
-        0, 0, 1, 0;
-
-    // 正射投影的缩放和平移
-    Eigen::Matrix4f ortho_scale;
-    ortho_scale <<
-        2 / (r - l), 0, 0, 0,
-        0, 2 / (t - b), 0, 0,
-        0, 0, 2 / (zNear - zFar), 0,
-        0, 0, 0, 1;
-
+    //透视矩阵
+    Eigen::Matrix4f proj;
+    proj <<
+        zNear / r, 0, 0, 0,
+        0, zNear / t, 0, 0,
+        0, 0, -(zFar + zNear) / (zFar - zNear), -2 * zFar * zNear / (zFar - zNear),
+        0, 0, -1, 0;
+    
+    //正射投影
     Eigen::Matrix4f ortho_trans;
     ortho_trans <<
-        1, 0, 0, -(r + l) / 2,
-        0, 1, 0, -(t + b) / 2,
+        1, 0, 0, 0,
+        0, 1, 0, 0,
         0, 0, 1, -(zNear + zFar) / 2,
         0, 0, 0, 1;
 
+    //NDC —— Screen
+    Eigen::Matrix4f screen;
+    screen << width * 0.5f, 0, 0, width * 0.5f,
+        0, height * 0.5f, 0, height * 0.5f,
+        0, 0, 0.5f, 0.5f,
+        0, 0, 0, 1;
+
     // 综合透视和正射投影
-    Eigen::Matrix4f ortho = ortho_scale * ortho_trans;
-    return ortho * persp2ortho;
+
+    return screen * ortho_trans * proj;
 }
 
 
 Eigen::Matrix4f rasterizer::MVP() {
-    Eigen::Vector3f eye_pos(0, 0.7f, 2.17f);
-    float fov = 75.0f;
+    Eigen::Vector3f eye_pos(-0.5, 1, 1.5f);
+    float fov = 90.0f;
     float aspect = width / height;
-    float zNear = 0.8f;
-    float zFar = 3.0f;
+    float zNear = 1.2f;
+    float zFar = 2.0f;
 
     Eigen::Matrix4f M = model_Matrix(fov);
     Eigen::Matrix4f V = view_Matrix(eye_pos);
@@ -107,22 +113,24 @@ void rasterizer::triangle(Vec3f a, Vec3f b, Vec3f c, Vec2f t0, Vec2f t1, Vec2f t
             auto [alpha, beta, gamma] = computeBarycentric2D(x + 0.5f, y + 0.5f, a, b, c);
             if (alpha < 0 || beta < 0 || gamma < 0) continue;
 
-            double w_reciprocal = 1.0f / (alpha * w0 + beta * w1 + gamma * w2);
-            double z_interpolated = (alpha * a.z / w0 + beta * b.z / w1 + gamma * c.z / w2) * w_reciprocal;
+            double z_interpolated = alpha * a.z + beta * b.z + gamma * c.z;
 
             int idx = y * width + x;
             if (idx < 0 || idx >= width * height) continue;
 
             if (z_interpolated < buffer[idx]) {
-                buffer[idx] = z_interpolated;
+                buffer[idx] = z_interpolated;                
 
-                //std::cout << z_interpolated << std::endl;                
-
-                float u = (alpha * t0.u / w0 + beta * t1.u / w1 + gamma * t2.u / w2) * w_reciprocal;
-                float v = (alpha * t0.v / w0 + beta * t1.v / w1 + gamma * t2.v / w2) * w_reciprocal;
+                //透视矫正
+                float u = (alpha * t0.u / w0 + beta * t1.u / w1 + gamma * t2.u / w2) /
+                    (alpha / w0 + beta / w1 + gamma / w2);
+                float v = (alpha * t0.v / w0 + beta * t1.v / w1 + gamma * t2.v / w2) /
+                    (alpha / w0 + beta / w1 + gamma / w2);
 
                 u = std::max(0.0f, std::min(u, 1.0f));
                 v = std::max(0.0f, std::min(v, 1.0f));
+
+                v = 1 - v;
 
                 int tex_x = std::min(int(u * texture.get_width()), texture.get_width() - 1);
                 int tex_y = std::min(int(v * texture.get_height()), texture.get_height() - 1);
@@ -142,61 +150,54 @@ void rasterizer::draw() {
     Eigen::Matrix4f mvp = MVP();
 
     for (int i = 0; i < model->nfaces(); ++i) {
-        // 顶点索引
-        int idx0 = model->face(i)[0].x;
-        int idx1 = model->face(i)[1].x;
-        int idx2 = model->face(i)[2].x;
+        //顶点模型坐标
+        Vec3f v0 = model->vert(model->face(i)[0].x);
+        Vec3f v1 = model->vert(model->face(i)[1].x);
+        Vec3f v2 = model->vert(model->face(i)[2].x);
 
-        Vec3f v0_obj = model->vert(idx0);
-        Vec3f v1_obj = model->vert(idx1);
-        Vec3f v2_obj = model->vert(idx2);
+
 
         // 原始纹理坐标
         Vec2f t0 = model->texture(model->face(i)[0].y);
         Vec2f t1 = model->texture(model->face(i)[1].y);
         Vec2f t2 = model->texture(model->face(i)[2].y);
 
-        Eigen::Matrix4f screen;
-        screen << width * 0.5f, 0, 0, width * 0.5f,
-            0, height * 0.5f, 0, height * 0.5f,
-            0, 0, 0.5f, 0.5f,
-            0, 0, 0, 1;
+        //应用mvp变换
+        Eigen::Vector4f v0_screen = mvp * Eigen::Vector4f(v0.x, v0.y, v0.z, 1.0f);
+        Eigen::Vector4f v1_screen = mvp * Eigen::Vector4f(v1.x, v1.y, v1.z, 1.0f);
+        Eigen::Vector4f v2_screen = mvp * Eigen::Vector4f(v2.x, v2.y, v2.z, 1.0f);
 
-        // 对每个顶点进行 MVP 变换 → NDC → 屏幕空间
-        Eigen::Vector4f v0_clip = mvp * Eigen::Vector4f(v0_obj.x, v0_obj.y, v0_obj.z, 1.0f);
-        Eigen::Vector4f v1_clip = mvp * Eigen::Vector4f(v1_obj.x, v1_obj.y, v1_obj.z, 1.0f);
-        Eigen::Vector4f v2_clip = mvp * Eigen::Vector4f(v2_obj.x, v2_obj.y, v2_obj.z, 1.0f);
+        //获取w值
+        float w0, w1, w2;
+        w0 = v0_screen.w();
+        w1 = v1_screen.w();
+        w2 = v2_screen.w();
 
-        float iw0 = 1.f / v0_clip.w();
-        float iw1 = 1.f / v1_clip.w();
-        float iw2 = 1.f / v2_clip.w();
+        //齐次化处理
+        Vec3f v0_homo(v0_screen.x() / w0, v0_screen.y() / w0, v0_screen.z() / w0);
+        Vec3f v1_homo(v1_screen.x() / w1, v1_screen.y() / w1, v1_screen.z() / w1);
+        Vec3f v2_homo(v2_screen.x() / w2, v2_screen.y() / w2, v2_screen.z() / w2);
 
-        
-        // NDC → 屏幕空间
-        Eigen::Vector4f v0_screen_h = screen * (v0_clip / v0_clip.w());
-        Eigen::Vector4f v1_screen_h = screen * (v1_clip / v1_clip.w());
-        Eigen::Vector4f v2_screen_h = screen * (v2_clip / v2_clip.w());
-
-
-        Vec3f v0_screen(v0_screen_h.x(), v0_screen_h.y(), v0_screen_h.z());
-        Vec3f v1_screen(v1_screen_h.x(), v1_screen_h.y(), v1_screen_h.z());
-        Vec3f v2_screen(v2_screen_h.x(), v2_screen_h.y(), v2_screen_h.z());
-
-        // 对 UV 做透视矫正
-        Vec2f t0_corr = t0 * iw0;
-        Vec2f t1_corr = t1 * iw1;
-        Vec2f t2_corr = t2 * iw2;
-
-        triangle(v0_screen, v1_screen, v2_screen, t0_corr, t1_corr, t2_corr, iw0, iw1, iw2, texture);
+        triangle(v0_homo, v1_homo, v2_homo, t0, t1, t2, w0, w1, w2, texture);
     }
-    //生成灰度图
-    for (int i = 0; i < width; i++) {
-        for (int j = 0; j < height; j++) {
-            float depth = buffer[i + j * width];//读取已经更新过的深度缓存
-            unsigned char gray = static_cast<unsigned char>(std::clamp((1.0f - depth) * 255.0f, 0.0f, 255.0f));//限制范围
-            Zbuffer.set(i, j, TGAColor(gray, 1));
+
+    //可选：根据模型增强的深度效果，
+    float min_depth = -2;
+    float max_depth = 0.8;
+
+        for (int i = 0; i < width; i++) {
+            for (int j = 0; j < height; j++) {
+                float depth = buffer[i + j * width];
+
+                // 映射到 [0, 1]
+                float norm_depth = (depth - min_depth) / (max_depth - min_depth);
+
+                norm_depth = 1.0f - norm_depth;
+
+                unsigned char gray = static_cast<unsigned char>(std::clamp(norm_depth * 255.0f, 0.0f, 255.0f));
+                Zbuffer.set(i, j, TGAColor(gray, 1));
+            }
         }
-    }
 
     framebuffer.flip_vertically();
     framebuffer.write_tga_file("frame.tga");
