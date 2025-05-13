@@ -35,6 +35,6 @@ private:
     TGAImage& framebuffer;
     TGAImage& Zbuffer;
 
-    int width = 1000;
-    int height = 1000;
+    int width = 2180;
+    int height = 1960;
 };

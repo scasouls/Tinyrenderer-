@@ -11,8 +11,8 @@ std::unique_ptr<Model> model;//采用了智能指针替代了原先的new
 std::unique_ptr<float[]> buffer;
 std::unique_ptr<rasterizer> Ras;
 
-const int width = 1000;
-const int height = 1000;
+const int width = 2180;
+const int height = 1960;
 
 
 int main(int argc, char** argv) { 
@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
     TGAImage Zbuffer(width, height, TGAImage::GRAYSCALE);
 
     model = std::make_unique<Model>("../obj/youda.obj");//采用blender转化的obj文件，顶点未归一化
-    buffer = std::make_unique<float[]>(width * height*2);
+    buffer = std::make_unique<float[]>(width * height);
 
     for (int i = 0; i < width * height; i++) {
         buffer[i] = std::numeric_limits<float>::infinity();

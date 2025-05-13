@@ -55,13 +55,6 @@ Eigen::Matrix4f rasterizer::projection_Matrix(float eye_fov, float aspect, float
         0, 0, -(zFar + zNear) / (zFar - zNear), -2 * zFar * zNear / (zFar - zNear),
         0, 0, -1, 0;
     
-    //正射投影
-    Eigen::Matrix4f ortho_trans;
-    ortho_trans <<
-        1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, 1, -(zNear + zFar) / 2,
-        0, 0, 0, 1;
 
     //NDC —— Screen
     Eigen::Matrix4f screen;
@@ -72,7 +65,7 @@ Eigen::Matrix4f rasterizer::projection_Matrix(float eye_fov, float aspect, float
 
     // 综合透视和正射投影
 
-    return screen * ortho_trans * proj;
+    return screen * proj;
 }
 
 
@@ -80,8 +73,8 @@ Eigen::Matrix4f rasterizer::MVP() {
     Eigen::Vector3f eye_pos(-0.5, 1, 1.5f);
     float fov = 90.0f;
     float aspect = width / height;
-    float zNear = 1.2f;
-    float zFar = 2.0f;
+    float zNear = 1.0f;
+    float zFar = 3.0f;
 
     Eigen::Matrix4f M = model_Matrix(fov);
     Eigen::Matrix4f V = view_Matrix(eye_pos);
@@ -100,6 +93,33 @@ std::tuple<float, float, float> rasterizer::computeBarycentric2D(float x, float 
     return { c1, c2, c3 };
 }
 
+
+//双线性插值
+Eigen::Vector3f filtering(float u, float v, TGAImage& texture) {
+    float u_img = u * (texture.get_width()-1);
+    float v_img = v * (texture.get_height()-1);
+
+    float lx = std::floor(u_img);
+    float rx = std::ceil(u_img);
+    float ty = std::ceil(v_img);
+    float by = std::floor(v_img);
+
+    auto lerp = [](float s, Eigen::Vector3f v0, Eigen::Vector3f v1) {
+        return v0 + s * (v1 - v0);
+        };
+
+    auto get_color = [&](float u, float v) {
+        auto color = texture.get(u, v);
+        return Eigen::Vector3f(color.raw[0], color.raw[1], color.raw[2]);
+        };
+    
+    Eigen::Vector3f u0 = lerp(u_img - lx, get_color(lx, ty), get_color(rx, ty));
+    Eigen::Vector3f u1 = lerp(u_img - lx, get_color(lx, by), get_color(rx, by));
+
+    Eigen::Vector3f r = lerp(v_img - by, u0, u1);
+    return r;
+}
+
 //光栅化三角形
 void rasterizer::triangle(Vec3f a, Vec3f b, Vec3f c, Vec2f t0, Vec2f t1, Vec2f t2, float w0, float w1, float w2, TGAImage& texture) {
     int min_x = std::floor(std::min({ a.x,b.x,c.x }));
@@ -110,6 +130,7 @@ void rasterizer::triangle(Vec3f a, Vec3f b, Vec3f c, Vec2f t0, Vec2f t1, Vec2f t
 
     for (int x = min_x; x <= max_x; ++x) {
         for (int y = min_y; y <= max_y; ++y) {
+
             auto [alpha, beta, gamma] = computeBarycentric2D(x + 0.5f, y + 0.5f, a, b, c);
             if (alpha < 0 || beta < 0 || gamma < 0) continue;
 
@@ -132,11 +153,10 @@ void rasterizer::triangle(Vec3f a, Vec3f b, Vec3f c, Vec2f t0, Vec2f t1, Vec2f t
 
                 v = 1 - v;
 
-                int tex_x = std::min(int(u * texture.get_width()), texture.get_width() - 1);
-                int tex_y = std::min(int(v * texture.get_height()), texture.get_height() - 1);
+                Eigen::Vector3f color_vec = filtering(u, v, texture);
 
-                //std::cout << u<< v <<  std::endl;
-                TGAColor color = texture.get(tex_x, tex_y);
+                //color读取bgr，翻转为rgb
+                TGAColor color(color_vec.z(), color_vec.y(), color_vec.x(), 255);
                 framebuffer.set(x, y, color);
             }
         }
@@ -182,19 +202,19 @@ void rasterizer::draw() {
     }
 
     //可选：根据模型增强的深度效果，
-    float min_depth = -2;
-    float max_depth = 0.8;
+    //float min_depth = -2;
+    //float max_depth = 0.8;
 
         for (int i = 0; i < width; i++) {
             for (int j = 0; j < height; j++) {
                 float depth = buffer[i + j * width];
 
                 // 映射到 [0, 1]
-                float norm_depth = (depth - min_depth) / (max_depth - min_depth);
+                //float norm_depth = (depth - min_depth) / (max_depth - min_depth);
 
-                norm_depth = 1.0f - norm_depth;
+                depth = 1.0f - depth;
 
-                unsigned char gray = static_cast<unsigned char>(std::clamp(norm_depth * 255.0f, 0.0f, 255.0f));
+                unsigned char gray = static_cast<unsigned char>(std::clamp(depth * 255.0f, 0.0f, 255.0f));
                 Zbuffer.set(i, j, TGAColor(gray, 1));
             }
         }
